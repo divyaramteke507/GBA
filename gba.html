@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GBA Web Library</title>
+    <script src="https://cdn.emulatorjs.org/stable/data/loader.js"></script>
+    
+    <style>
+        /* --- GLOBAL STYLES --- */
+        body {
+            background-color: #121212;
+            color: white;
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+        }
+
+        /* --- LIBRARY VIEW STYLES --- */
+        .header {
+            background-color: #1f1f1f;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        }
+        .header h1 {
+            font-size: 20px;
+            margin: 0;
+            font-weight: 500;
+        }
+        .header-icons span {
+            margin-left: 20px;
+            font-size: 20px;
+            cursor: pointer;
+        }
+
+        #game-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            height: calc(100vh - 60px);
+            overflow-y: auto;
+        }
+
+        .game-item {
+            padding: 15px 20px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .game-item:active {
+            background-color: #333;
+        }
+
+        .game-title {
+            font-size: 16px;
+            display: block;
+        }
+
+        .game-sub {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        .fab {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            width: 56px;
+            height: 56px;
+            background-color: #80cbc4;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+            cursor: pointer;
+            font-size: 30px;
+            color: #000;
+            user-select: none;
+            transition: transform 0.2s;
+            z-index: 50;
+        }
+
+        .fab:active {
+            transform: scale(0.95);
+        }
+
+        #file-upload {
+            display: none;
+        }
+
+        /* --- EMULATOR VIEW (THEATER MODE) --- */
+        #emulator-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            /* Deep spotlight background */
+            background: radial-gradient(circle at center, #1f2229 0%, #000000 100%);
+            display: none; /* Hidden initially */
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        #game-display {
+            width: 80%;
+            height: 80%;
+            max-width: 1024px;
+            background: #000;
+            box-shadow: 0 0 50px rgba(0,0,0,0.8); /* Cinema shadow */
+            border-radius: 4px;
+            border: 1px solid #333;
+            /* Allow mouse events to pass through for any internal menus */
+            pointer-events: auto; 
+        }
+
+        /* --- FLOATING CONTROL DOCK --- */
+        .control-dock {
+            position: absolute;
+            bottom: 30px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 10px 20px;
+            border-radius: 30px;
+            display: flex;
+            gap: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            transition: opacity 0.3s;
+            z-index: 101;
+        }
+
+        #emulator-container:not(:hover) .control-dock {
+            opacity: 0.3;
+        }
+
+        .dock-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            padding: 8px;
+            border-radius: 50%;
+            transition: transform 0.2s, background 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            outline: none;
+        }
+
+        .dock-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+            transform: translateY(-3px);
+        }
+
+        /* --- CUSTOM CONTROLS MODAL (GLASSMORPHISM) --- */
+        #controls-modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0.9);
+            background: rgba(26, 29, 41, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 40px;
+            width: 400px;
+            z-index: 200;
+            opacity: 0;
+            pointer-events: none;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            backdrop-filter: blur(15px);
+            color: #fff;
+        }
+
+        #controls-modal.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translate(-50%, -50%) scale(1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 15px;
+        }
+
+        .modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #80cbc4; /* Teal Accent */
+            letter-spacing: 1px;
+            text-transform: uppercase;
+        }
+
+        .key-map-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .key-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+        }
+
+        .action-name {
+            font-size: 14px;
+            color: #aaa;
+            font-weight: 500;
+        }
+
+        .key-cap {
+            background: linear-gradient(180deg, #333, #222);
+            border: 1px solid #444;
+            border-bottom: 3px solid #111;
+            border-radius: 6px;
+            padding: 5px 12px;
+            font-family: monospace;
+            font-size: 14px;
+            color: #fff;
+            min-width: 20px;
+            text-align: center;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            text-transform: uppercase;
+        }
+
+        .key-cap.wide { padding: 5px 20px; }
+        
+        .close-modal-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .close-modal-btn:hover { color: #ff4081; transform: rotate(90deg); }
+
+    </style>
+</head>
+<body>
+
+    <div id="library-view">
+        <div class="header">
+            <h1 id="header-title">GBA games (0)</h1>
+            <div class="header-icons">
+                <span>☁️</span> <span>⋮</span>
+            </div>
+        </div>
+
+        <ul id="game-list">
+            </ul>
+
+        <div class="fab" onclick="document.getElementById('file-upload').click()">+</div>
+        <input type="file" id="file-upload" accept=".gba,.zip" />
+    </div>
+
+    <div id="emulator-container">
+        
+        <div id="game-display"></div>
+
+        <div class="control-dock">
+            <button class="dock-btn" onclick="closeGame()" title="Exit to Library">
+                🏠
+            </button>
+            <button class="dock-btn" onclick="toggleControls()" title="View Controls">
+                🎮
+            </button>
+            <button class="dock-btn" onclick="toggleFullscreen()" title="Fullscreen">
+                ⛶
+            </button>
+            <button class="dock-btn" onclick="location.reload()" title="Reset Console">
+                ⚡
+            </button>
+        </div>
+
+        <div id="controls-modal">
+            <div class="modal-header">
+                <span class="modal-title">Controller Map</span>
+                <button class="close-modal-btn" onclick="toggleControls()">×</button>
+            </div>
+
+            <div class="key-map-list">
+                <div class="key-row">
+                    <span class="action-name">A Button</span>
+                    <span class="key-cap">Z</span>
+                </div>
+                <div class="key-row">
+                    <span class="action-name">B Button</span>
+                    <span class="key-cap">X</span>
+                </div>
+                <div class="key-row">
+                    <span class="action-name">L / R Triggers</span>
+                    <div>
+                        <span class="key-cap">Q</span>
+                        <span class="key-cap">E</span>
+                    </div>
+                </div>
+                <div class="key-row">
+                    <span class="action-name">Start / Select</span>
+                    <div>
+                        <span class="key-cap wide">Enter</span>
+                        <span class="key-cap wide">Shift</span>
+                    </div>
+                </div>
+                <div class="key-row">
+                    <span class="action-name">Movement</span>
+                    <div>
+                        <span class="key-cap">↑</span>
+                        <span class="key-cap">↓</span>
+                        <span class="key-cap">←</span>
+                        <span class="key-cap">→</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 20px; font-size: 11px; color: #666; text-align: center;">
+                Need to rebind? Open the in-game menu.
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // Store loaded files
+        let gamesLibrary = [];
+
+        const fileInput = document.getElementById('file-upload');
+        const gameListUl = document.getElementById('game-list');
+        const headerTitle = document.getElementById('header-title');
+        const emulatorContainer = document.getElementById('emulator-container');
+        const libraryView = document.getElementById('library-view');
+
+        // 1. Handle File Upload
+        fileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            gamesLibrary.push(file);
+            renderList();
+            fileInput.value = ''; 
+        });
+
+        // 2. Render List
+        function renderList() {
+            gameListUl.innerHTML = '';
+            headerTitle.textContent = `GBA games (${gamesLibrary.length})`;
+
+            gamesLibrary.forEach((file, index) => {
+                const li = document.createElement('li');
+                li.className = 'game-item';
+                li.onclick = () => launchGame(index);
+
+                const name = file.name.replace('.gba', '').replace('.zip', '');
+                li.innerHTML = `
+                    <span class="game-title">${name}</span>
+                    <div class="game-sub">${(file.size / 1024 / 1024).toFixed(2)} MB</div>
+                `;
+                gameListUl.appendChild(li);
+            });
+        }
+
+        // 3. Launch Game
+        function launchGame(index) {
+            const file = gamesLibrary[index];
+            const romUrl = URL.createObjectURL(file);
+
+            // Switch Views
+            libraryView.style.display = 'none';
+            emulatorContainer.style.display = 'flex'; 
+
+            // Configure EmulatorJS
+            window.EJS_player = '#game-display';
+            window.EJS_core = 'gba';
+            window.EJS_gameUrl = romUrl;
+            window.EJS_pathtodata = 'https://cdn.emulatorjs.org/stable/data/';
+            window.EJS_startOnLoaded = true;
+            window.EJS_biosUrl = ''; 
+            
+            // Aesthetic settings
+            window.EJS_borderless = true; 
+            window.EJS_backgroundColor = '#000000';
+
+            // Inject Loader Script
+            const oldScript = document.getElementById('emu-loader');
+            if (oldScript) oldScript.remove();
+
+            const script = document.createElement('script');
+            script.id = 'emu-loader';
+            script.src = 'https://cdn.emulatorjs.org/stable/data/loader.js';
+            document.body.appendChild(script);
+        }
+
+        // 4. Close Game
+        function closeGame() {
+            if(confirm("Going back will reset the emulator. Continue?")) {
+                location.reload(); 
+            }
+        }
+
+        // 5. Toggle Fullscreen
+        function toggleFullscreen() {
+            const el = document.getElementById('emulator-container');
+            if (!document.fullscreenElement) {
+                el.requestFullscreen().catch(err => {
+                    console.error(`Error attempting to enable fullscreen: ${err.message}`);
+                });
+            } else {
+                document.exitFullscreen();
+            }
+        }
+
+        // 6. Toggle Controls Modal
+        function toggleControls() {
+            const modal = document.getElementById('controls-modal');
+            modal.classList.toggle('active');
+        }
+    </script>
+</body>
+</html>
